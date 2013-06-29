@@ -9,7 +9,7 @@ if ( ! defined('BASEPATH')) exit('No direct script access allowed');
 
 $plugin_info = array(
 	'pi_name'			=> 'Antenna',
-	'pi_version'		=> '1.22',
+	'pi_version'		=> '1.22 mod by Intoeetive 1.0',
 	'pi_author'			=> 'Matt Weinberg',
 	'pi_author_url'		=> 'http://www.VectorMediaGroup.com',
 	'pi_description'	=> 'Returns the embed code and various pieces of metadata for YouTube, Vimeo, Wistia, and Viddler Videos',
@@ -62,6 +62,7 @@ class Antenna
 		$max_height = ($this->EE->TMPL->fetch_param('max_height')) ? "&maxheight=" . $this->EE->TMPL->fetch_param('max_height') : "";
 		$wmode = ($this->EE->TMPL->fetch_param('wmode')) ? $this->EE->TMPL->fetch_param('wmode') : "";
 		$wmode_param = ($this->EE->TMPL->fetch_param('wmode')) ? "&wmode=" . $this->EE->TMPL->fetch_param('wmode') : "";
+		$youtube_autoplay = ($this->EE->TMPL->fetch_param('youtube_autoplay')) ? "&autoplay=1" : "";
 
 		// Correct for a bug in YouTube response if only maxheight is set and the video is over 612px wide
 		if (empty($max_height)) $max_height = "&maxheight=" . $this->EE->TMPL->fetch_param('max_width');
@@ -116,12 +117,25 @@ class Antenna
 		{
 			//Create the info and header variables
 			list($video_info, $video_header) = $this->curl($url);
-
+			
 			if (!$video_info || $video_header != "200")
 			{
 				$tagdata = $this->EE->functions->var_swap($tagdata, $video_data);
 				$this->return_data = $tagdata;
 				return;
+			}
+			
+			//get youtube description
+			if ($this->EE->TMPL->fetch_param('get_youtube_description') && (strpos($video_url, "youtube.com/") !== FALSE OR strpos($video_url, "youtu.be/") !== FALSE)) 
+			{
+				$regex = "/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/";
+				preg_match($regex, $video_url, $matches);
+				$video_id = $matches[2];
+				$gdata_url = "http://gdata.youtube.com/feeds/api/videos/".$video_id."?v=2&alt=json&prettyprint=true";
+				$gdata_raw = $this->curl($gdata_url);
+				$gdata = json_decode($gdata_raw[0]);
+				$video_data['description'] = $gdata->entry->{'media$group'}->{'media$description'}->{'$t'};
+				$video_info = str_replace('</oembed>', '<description>'.$video_data['description'].'</description></oembed>', $video_info);
 			}
 
 			// write the data to cache if caching hasn't been disabled
@@ -136,6 +150,7 @@ class Antenna
 
 		// Decode the cURL data
 		$video_info = simplexml_load_string($video_info);
+		
 
     	// Inject wmode transparent if required
     	if ($wmode === 'transparent' || $wmode === 'opaque' || $wmode === 'window' ) {
@@ -155,7 +170,7 @@ class Antenna
 	    		preg_match('/<iframe.*?src="(.*?)".*?<\/iframe>/i', $video_info->html, $matches);
 	    		$append_query_marker = (strpos($matches[1], '?') !== false ? '' : '?');
 
-	    		$video_info->html = preg_replace('/<iframe(.*?)src="(.*?)"(.*?)<\/iframe>/i', '<iframe$1src="$2' . $append_query_marker . '&wmode=' . $wmode . '"$3</iframe>', $video_info->html);
+	    		$video_info->html = preg_replace('/<iframe(.*?)src="(.*?)"(.*?)<\/iframe>/i', '<iframe$1src="$2' . $append_query_marker . '&wmode=' . $wmode . $youtube_autoplay . '"$3</iframe>', $video_info->html);
 	    	}
     	}
 
